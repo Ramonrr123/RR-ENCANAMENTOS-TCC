@@ -1,0 +1,1 @@
+ALTER TABLE "produtos" ADD COLUMN "ferramenta" BOOLEAN NOT NULL DEFAULT false;

@@ -1,0 +1,630 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model CrmUsuarios {
+  id               Int                          @id @default(autoincrement())
+  login            String                       @unique
+  nome             String
+  email            String?                      @unique
+  password         String
+  cpfCnpj          String?                      @unique
+  status           UserStatus                   @default(ATIVO)
+  isAdmin          Boolean                      @default(false)
+  grupoUsuarioId   String?
+  dataSaida        DateTime?
+  profileImage     String?
+  especialidade    Especialidade?
+  createdAt        DateTime                     @default(now())
+  updatedAt        DateTime                     @updatedAt
+  grupoUsuario     CrmGruposUsuarios?           @relation(fields: [grupoUsuarioId], references: [id])
+  ordensAtribuidas OrdemServico[]               @relation("OrdemFuncionario")
+  empresas         CrmUsuariosEmpresas[]
+  permissoesTelas  CrmPermissoesTelasUsuario[]
+  sessoes          CrmSessoes[]                 @relation("SessoesUsuario")
+  sessoesEncerradas CrmSessoes[]                @relation("SessoesEncerradasPor")
+  preferenciasPdf  CrmUsuarioPreferenciasPdf?
+  movimentosEstoque EstoqueMovimento[]
+  agendamentos      OrdemAgendamento[]
+
+  @@map("crm_usuarios")
+}
+
+model CrmSessoes {
+  id             String    @id
+  usuarioId      Int
+  empresaCodigo  String?
+  ip             String?
+  userAgent      String?
+  criadoEm       DateTime  @default(now())
+  expiraEm       DateTime
+  ultimoPing     DateTime  @default(now())
+  ativo          Boolean   @default(true)
+  encerradoEm    DateTime?
+  encerradoPorId Int?
+
+  usuario      CrmUsuarios  @relation("SessoesUsuario", fields: [usuarioId], references: [id], onDelete: Cascade)
+  encerradoPor CrmUsuarios? @relation("SessoesEncerradasPor", fields: [encerradoPorId], references: [id], onDelete: SetNull)
+
+  @@index([ativo, ultimoPing])
+  @@index([usuarioId])
+  @@map("crm_sessoes")
+}
+
+model CrmUsuarioPreferenciasPdf {
+  usuarioId        Int      @id
+  secaoObs         String?  @db.Text
+  secaoClausulas   String?  @db.Text
+  entregaEntrega   String?
+  entregaPagamento String?
+  entregaValidade  String?
+  entregaFrete     String?
+  updatedAt        DateTime @updatedAt
+
+  usuario CrmUsuarios @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  @@map("crm_usuario_preferencias_pdf")
+}
+
+model CrmGruposUsuarios {
+  id                                   String               @id
+  name                                 String               @unique
+  label                                String
+  description                          String?
+  createdAt                            DateTime             @default(now())
+  updatedAt                            DateTime             @updatedAt
+  podeAprovarOrcamentos                Boolean              @default(false)
+  podeVerTabelaPreco                   Boolean              @default(false)
+  podePrecificarOrcamentoRepresentante Boolean              @default(false)
+  podeLiberarVisualizacaoRepresentante Boolean              @default(false)
+  podeVisualizarProdutos               Boolean              @default(false)
+  permissoes                           CrmPermissoesTelas[]
+  usuarios                             CrmUsuarios[]
+
+  @@map("crm_grupos_usuarios")
+}
+
+model CrmTelas {
+  id                String                      @id
+  screenId          String                      @unique
+  label             String
+  parentId          String?
+  moduleId          String?
+  order             Int                         @default(0)
+  createdAt         DateTime                    @default(now())
+  updatedAt         DateTime                    @updatedAt
+  permissoes        CrmPermissoesTelas[]
+  permissoesUsuario CrmPermissoesTelasUsuario[]
+  parent            CrmTelas?                   @relation("TelasHierarchy", fields: [parentId], references: [id], onDelete: Cascade)
+  children          CrmTelas[]                  @relation("TelasHierarchy")
+
+  @@map("crm_telas")
+}
+
+model CrmPermissoesTelas {
+  id            String            @id
+  userGroupId   String
+  screenId      String
+  hasPermission Boolean           @default(false)
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+  screen        CrmTelas          @relation(fields: [screenId], references: [id], onDelete: Cascade)
+  userGroup     CrmGruposUsuarios @relation(fields: [userGroupId], references: [id], onDelete: Cascade)
+
+  @@unique([userGroupId, screenId])
+  @@map("crm_permissoes_telas")
+}
+
+model CrmPermissoesTelasUsuario {
+  id            String      @id @default(uuid())
+  usuarioId     Int         @map("usuario_id")
+  screenId      String      @map("screen_id")
+  hasPermission Boolean     @default(true) @map("has_permission")
+  createdAt     DateTime    @default(now()) @map("created_at")
+  updatedAt     DateTime    @updatedAt @map("updated_at")
+  usuario       CrmUsuarios @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  screen        CrmTelas    @relation(fields: [screenId], references: [id], onDelete: Cascade)
+
+  @@unique([usuarioId, screenId])
+  @@index([usuarioId], map: "idx_perm_telas_usuario")
+  @@map("crm_permissoes_telas_usuario")
+}
+
+model CrmEmpresas {
+  id        Int                   @id @default(autoincrement())
+  codigo    String                @unique
+  nome      String
+  ativo     Boolean               @default(true)
+  createdAt DateTime              @default(now())
+  updatedAt DateTime              @updatedAt
+  usuarios  CrmUsuariosEmpresas[]
+
+  @@map("crm_empresas")
+}
+
+model CrmUsuariosEmpresas {
+  id        Int         @id @default(autoincrement())
+  userId    Int
+  companyId Int
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+  company   CrmEmpresas @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user      CrmUsuarios @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, companyId])
+  @@map("crm_usuarios_empresas")
+}
+
+enum UserStatus {
+  ATIVO
+  DESLIGADO
+}
+
+enum FinanceiroTipo {
+  PAGAR
+  RECEBER
+}
+
+enum FinanceiroStatus {
+  ABERTO
+  PAGO_PARCIAL
+  PAGO
+  CANCELADO
+}
+
+model FinanceiroTitulo {
+  id               Int              @id @default(autoincrement())
+  empresaCodigo    String
+  tipo             FinanceiroTipo
+  pessoa           String
+  numeroDocumento  String?
+  tipoDocumento    String
+  planoContas      String
+  formaPagamento   String
+  valor            Decimal          @db.Decimal(14, 2)
+  dataEmissao      DateTime?        @db.Date
+  dataCompetencia  DateTime?        @db.Date
+  dataVencimento   DateTime         @db.Date
+  parcela          String?
+  contaBancaria    String?
+  desconto         Decimal          @default(0) @db.Decimal(14, 2)
+  juros            Decimal          @default(0) @db.Decimal(14, 2)
+  multa            Decimal          @default(0) @db.Decimal(14, 2)
+  valorBaixado     Decimal          @default(0) @db.Decimal(14, 2)
+  dataBaixa        DateTime?        @db.Date
+  codigoBarras     String?
+  observacao       String?          @db.Text
+  status           FinanceiroStatus @default(ABERTO)
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  @@index([empresaCodigo, tipo, dataVencimento])
+  @@map("financeiro_titulos")
+}
+
+model Produto {
+  id            Int      @id @default(autoincrement())
+  empresaCodigo String
+  codigo        String
+  descricao     String
+  unidade       String
+  categoria     String
+  preco         Decimal  @db.Decimal(14, 2)
+  custo         Decimal  @default(0) @db.Decimal(14, 2)
+  estoque       Decimal  @default(0) @db.Decimal(14, 3)
+  estoqueMinimo Decimal  @default(0) @db.Decimal(14, 3)
+  observacao    String?  @db.Text
+  ferramenta    Boolean  @default(false)
+  ativo         Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  movimentos    EstoqueMovimento[]
+  pecas         OrdemPeca[]
+  saldos        EstoqueSaldo[]
+
+  @@unique([empresaCodigo, codigo])
+  @@index([empresaCodigo, descricao])
+  @@map("produtos")
+}
+
+enum EstoqueMovimentoTipo {
+  ENTRADA
+  SAIDA
+}
+
+model EstoqueMovimento {
+  id            Int                  @id @default(autoincrement())
+  empresaCodigo String
+  produtoId     Int
+  tipo          EstoqueMovimentoTipo
+  quantidade    Decimal              @db.Decimal(14, 3)
+  data          DateTime             @db.Date
+  motivo        String
+  documento     String?
+  observacao    String?              @db.Text
+  ordemId       Int?
+  localId       Int?
+  usuarioId     Int?
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+  produto       Produto              @relation(fields: [produtoId], references: [id], onDelete: Restrict)
+  ordem         OrdemServico?        @relation(fields: [ordemId], references: [id], onDelete: Restrict)
+  local         EstoqueLocal?        @relation(fields: [localId], references: [id], onDelete: Restrict)
+  usuario       CrmUsuarios?         @relation(fields: [usuarioId], references: [id], onDelete: SetNull)
+
+  @@index([empresaCodigo, data])
+  @@index([produtoId])
+  @@index([ordemId])
+  @@map("estoque_movimentos")
+}
+
+model Cliente {
+  id            Int            @id @default(autoincrement())
+  empresaCodigo String
+  nome          String
+  telefone      String?
+  endereco      String?
+  cidade        String?
+  tipoPessoa    TipoPessoa     @default(FISICA)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  ordens        OrdemServico[]
+  enderecos     ClienteEndereco[]
+
+  @@index([empresaCodigo, nome])
+  @@map("clientes")
+}
+
+enum OrdemSituacao {
+  ABERTA
+  EM_EXECUCAO
+  ENCERRADA
+  AGENDADA
+  EM_ANDAMENTO
+  CONCLUIDA
+  CANCELADA
+}
+
+model OrdemServico {
+  id               Int                @id @default(autoincrement())
+  empresaCodigo    String
+  numero           Int
+  clienteId        Int
+  situacao         OrdemSituacao      @default(ABERTA)
+  vistoria         String?            @db.Text
+  servicos         String?            @db.Text
+  taxaVistoria     Decimal            @default(0) @db.Decimal(14, 2)
+  maoDeObra        Decimal            @default(0) @db.Decimal(14, 2)
+  deslocamento     Decimal            @default(0) @db.Decimal(14, 2)
+  material         Decimal            @default(0) @db.Decimal(14, 2)
+  dataAbertura     DateTime           @db.Date
+  dataEncerramento DateTime?          @db.Date
+  garantiaAte      DateTime?          @db.Date
+  assinatura       String?            @db.Text
+  tipo             OrdemTipo?
+  origem           OrdemOrigem?
+  descricaoProblema String?           @db.Text
+  enderecoId       Int?
+  funcionarioId    Int?
+  entradaValor     Decimal?           @db.Decimal(14, 2)
+  margem           Decimal?           @db.Decimal(14, 2)
+  garantiaDias     Int?
+  preventivaEm     DateTime?          @db.Date
+  preventivaStatus String?            @default("a_contatar")
+  motivoCancelamento String?          @db.Text
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+  cliente          Cliente            @relation(fields: [clienteId], references: [id], onDelete: Restrict)
+  enderecoServico  ClienteEndereco?   @relation(fields: [enderecoId], references: [id], onDelete: Restrict)
+  funcionario      CrmUsuarios?       @relation("OrdemFuncionario", fields: [funcionarioId], references: [id], onDelete: SetNull)
+  pecas            OrdemPeca[]
+  movimentos       EstoqueMovimento[]
+  fotos            OrdemFoto[]
+  agendamento      OrdemAgendamento?
+  materiaisLoja    OrdemMaterialLoja[]
+  chamado          Chamado?
+
+  @@unique([empresaCodigo, numero])
+  @@index([empresaCodigo, situacao])
+  @@index([clienteId])
+  @@index([enderecoId])
+  @@index([funcionarioId])
+  @@map("ordens_servico")
+}
+
+model OrdemPeca {
+  id            Int          @id @default(autoincrement())
+  ordemId       Int
+  produtoId     Int
+  quantidade    Decimal      @db.Decimal(14, 3)
+  custoUnitario Decimal?     @db.Decimal(14, 2)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  ordem         OrdemServico @relation(fields: [ordemId], references: [id], onDelete: Cascade)
+  produto       Produto      @relation(fields: [produtoId], references: [id], onDelete: Restrict)
+
+  @@index([ordemId])
+  @@index([produtoId])
+  @@map("ordem_pecas")
+}
+
+model OrdemMaterialLoja {
+  id                  Int          @id @default(autoincrement())
+  ordemId             Int
+  descricao           String
+  quantidadeRetirada  Decimal      @db.Decimal(14, 3)
+  quantidadeUsada     Decimal      @db.Decimal(14, 3)
+  quantidadeDevolvida Decimal      @db.Decimal(14, 3)
+  ordem               OrdemServico @relation(fields: [ordemId], references: [id], onDelete: Cascade)
+
+  @@index([ordemId])
+  @@map("ordem_materiais_loja")
+}
+
+enum Especialidade {
+  ENCANADOR
+  PEDREIRO
+  PINTOR
+  ELETRICISTA
+}
+
+enum TipoPessoa {
+  FISICA
+  JURIDICA
+}
+
+enum OrdemTipo {
+  EMERGENCIA
+  PREVENTIVA
+  OBRA
+}
+
+enum OrdemOrigem {
+  WHATSAPP
+  TELEFONE
+  INDICACAO
+}
+
+enum OrdemFotoMomento {
+  ANTES
+  DEPOIS
+}
+
+model ClienteEndereco {
+  id         Int            @id @default(autoincrement())
+  clienteId  Int
+  apelido    String?
+  logradouro String
+  numero     String         @default("")
+  bairro     String         @default("")
+  cep        String         @default("")
+  cidade     String?
+  uf         String         @default("")
+  principal  Boolean        @default(false)
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+  cliente    Cliente        @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  ordens     OrdemServico[]
+
+  @@index([clienteId])
+  @@map("cliente_enderecos")
+}
+
+model OrdemFoto {
+  id        Int              @id @default(autoincrement())
+  ordemId   Int
+  momento   OrdemFotoMomento
+  url       String           @db.Text
+  createdAt DateTime         @default(now())
+  ordem     OrdemServico     @relation(fields: [ordemId], references: [id], onDelete: Cascade)
+
+  @@index([ordemId])
+  @@map("ordem_fotos")
+}
+
+model EstoqueLocal {
+  id            Int              @id @default(autoincrement())
+  empresaCodigo String
+  codigo        String
+  nome          String
+  saldos        EstoqueSaldo[]
+  movimentos    EstoqueMovimento[]
+
+  @@unique([empresaCodigo, codigo])
+  @@map("estoque_locais")
+}
+
+model EstoqueSaldo {
+  id         Int          @id @default(autoincrement())
+  produtoId  Int
+  localId    Int
+  quantidade Decimal      @default(0) @db.Decimal(14, 3)
+  produto    Produto      @relation(fields: [produtoId], references: [id], onDelete: Cascade)
+  local      EstoqueLocal @relation(fields: [localId], references: [id], onDelete: Cascade)
+
+  @@unique([produtoId, localId])
+  @@map("estoque_saldos")
+}
+
+model OrdemAgendamento {
+  id            Int         @id @default(autoincrement())
+  empresaCodigo String
+  ordemId       Int         @unique
+  funcionarioId Int
+  inicio        DateTime
+  fim           DateTime
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  ordem         OrdemServico @relation(fields: [ordemId], references: [id], onDelete: Cascade)
+  funcionario   CrmUsuarios  @relation(fields: [funcionarioId], references: [id], onDelete: Restrict)
+
+  @@index([funcionarioId, inicio])
+  @@index([empresaCodigo, inicio])
+  @@map("ordem_agendamentos")
+}
+
+model Tarefa {
+  id            Int       @id @default(autoincrement())
+  empresaCodigo String
+  titulo        String
+  descricao     String    @default("")
+  prazo         DateTime? @db.Date
+  prioridade    String
+  status        String
+  responsaveis  String[]  @default([])
+  chamadoId     Int?
+  canal         String?
+  horario       String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  chamado       Chamado?  @relation(fields: [chamadoId], references: [id], onDelete: SetNull)
+
+  @@index([empresaCodigo, prazo])
+  @@index([chamadoId])
+  @@map("tarefas")
+}
+
+enum ChamadoStatus {
+  ABERTO
+  EM_ATENDIMENTO
+  RESOLVIDO
+}
+
+model Chamado {
+  id             Int           @id @default(autoincrement())
+  empresaCodigo  String
+  numero         Int
+  nome           String
+  telefone       String
+  whatsapp       String
+  cep            String
+  logradouro     String
+  numeroEndereco String
+  bairro         String        @default("")
+  cidade         String
+  uf             String
+  tipo           String
+  descricao         String        @db.Text
+  status            ChamadoStatus @default(ABERTO)
+  senhaHash         String?
+  tentativasErradas Int           @default(0)
+  bloqueadoAte      DateTime?
+  aceiteEm          DateTime?
+  avisoVersao       String?
+  ipOrigem          String?
+  /** Canal de entrada do chamado público: site | whatsapp | telefone | indicacao | outro */
+  origem            String        @default("site")
+  ordemId           Int?          @unique
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  ordem             OrdemServico? @relation(fields: [ordemId], references: [id], onDelete: SetNull)
+  notas             ChamadoNota[]
+  tarefas           Tarefa[]
+  fotos             ChamadoFoto[]
+
+  @@unique([empresaCodigo, numero])
+  @@index([empresaCodigo, status])
+  @@index([ipOrigem, createdAt])
+  @@map("chamados")
+}
+
+model ChamadoFoto {
+  id        Int      @id @default(autoincrement())
+  chamadoId Int
+  situacao  String
+  url       String   @db.Text
+  createdAt DateTime @default(now())
+  chamado   Chamado  @relation(fields: [chamadoId], references: [id], onDelete: Cascade)
+
+  @@index([chamadoId])
+  @@map("chamado_fotos")
+}
+
+model ChamadoNota {
+  id        Int      @id @default(autoincrement())
+  chamadoId Int
+  texto     String   @db.Text
+  autor     String
+  createdAt DateTime @default(now())
+  chamado   Chamado  @relation(fields: [chamadoId], references: [id], onDelete: Cascade)
+
+  @@index([chamadoId])
+  @@map("chamado_notas")
+}
+
+model AcessoBloqueio {
+  id                Int       @id @default(autoincrement())
+  chave             String    @unique
+  tentativasErradas Int       @default(0)
+  bloqueadoAte      DateTime?
+  updatedAt         DateTime  @updatedAt
+
+  @@map("acesso_bloqueios")
+}
+
+model Atividade {
+  id            Int      @id @default(autoincrement())
+  empresaCodigo String
+  usuarioId     Int?
+  login         String
+  acao          String
+  caminho       String
+  metodo        String
+  objeto        String?
+  criadoEm      DateTime @default(now())
+
+  @@index([empresaCodigo, criadoEm])
+  @@map("atividades")
+}
+
+enum SolicitacaoTitularTipo {
+  ACESSO
+  CORRECAO
+  ANONIMIZACAO
+  ELIMINACAO
+  INFORMACAO
+  RETIRADA_CONSENTIMENTO
+  OUTRO
+}
+
+enum SolicitacaoTitularCanal {
+  WHATSAPP
+  SITE
+  PRESENCIAL
+  OUTRO
+}
+
+enum SolicitacaoTitularStatus {
+  ABERTA
+  EM_ANALISE
+  ATENDIDA
+  RECUSADA
+}
+
+model SolicitacaoTitular {
+  id                  Int                     @id @default(autoincrement())
+  empresaCodigo       String
+  tipo                SolicitacaoTitularTipo
+  solicitanteNome     String
+  solicitanteTelefone String?
+  chamadoNumero       Int?
+  descricao           String                  @db.Text
+  canal               SolicitacaoTitularCanal @default(OUTRO)
+  recebidoEm          DateTime                @default(now())
+  prazoEm             DateTime
+  status              SolicitacaoTitularStatus @default(ABERTA)
+  resposta            String?                 @db.Text
+  concluidoEm         DateTime?
+  responsavelId       Int?
+  createdAt           DateTime                @default(now())
+  updatedAt           DateTime                @updatedAt
+
+  @@index([empresaCodigo, status])
+  @@index([empresaCodigo, prazoEm])
+  @@map("solicitacoes_titular")
+}

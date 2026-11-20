@@ -1,0 +1,15 @@
+{
+  "private": true,
+  "scripts": {
+    "seed": "npm run seed --prefix backend",
+    "seed:demo": "node scripts/seed-demo.mjs",
+    "checar-datas-seed": "node scripts/checar-datas-seed.mjs",
+    "privacidade:ip": "npm run privacidade:ip --prefix backend --",
+    "test:e2e": "playwright test",
+    "test:api:jest": "npm run test:rodada4 --prefix backend"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.65.0",
+    "playwright": "^1.65.0"
+  }
+}
